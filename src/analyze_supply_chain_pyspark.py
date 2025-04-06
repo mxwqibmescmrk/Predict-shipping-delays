@@ -1,20 +1,19 @@
 import matplotlib
-matplotlib.use('Agg')  # Sử dụng backend không cần GUI
+matplotlib.use('Agg')  # Use the Agg backend for non-interactive plotting
+
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, year, month, count, when, lit, avg, isnan
-from pyspark.ml.feature import VectorAssembler, StringIndexer, OneHotEncoder, Imputer
+from pyspark.sql.functions import col, lit
+from pyspark.ml.feature import VectorAssembler, StringIndexer, OneHotEncoder
 from pyspark.ml.regression import LinearRegression, RandomForestRegressor, GBTRegressor
 from pyspark.ml import Pipeline
 from pyspark.ml.evaluation import RegressionEvaluator
 from pyspark.ml.tuning import ParamGridBuilder, CrossValidator
-from pyspark.sql.types import DoubleType, IntegerType
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
 import os
 
-# Cấu hình môi trường Hadoop
 os.environ['HADOOP_HOME'] = r'E:\Softwares\winutils-master\winutils-master\hadoop-3.0.0'
 os.environ['PATH'] += os.pathsep + os.path.join(os.environ['HADOOP_HOME'], 'bin')
 
@@ -28,295 +27,167 @@ spark = SparkSession.builder \
     .config("spark.driver.maxResultSize", "4g") \
     .getOrCreate()
 
-spark.sparkContext.setLogLevel("ERROR")  # Giảm log không cần thiết
+# Set logging level to ERROR to suppress warnings
+spark.sparkContext.setLogLevel("ERROR")
 
-# Đọc và tiền xử lý dữ liệu
-DATA_PATH = r'D:\Tieu_Anh\bigdata\kaggle-spark-analysis\data\DataCoSupplyChainDataset.csv'
-df = spark.read.csv(DATA_PATH, header=True, inferSchema=True, encoding='latin1')
+# Đọc dữ liệu
+data_path = r'D:\Tieu_Anh\bigdata\kaggle-spark-analysis\data\DataCoSupplyChainDataset.csv'
+df = spark.read.csv(data_path, header=True, inferSchema=True, encoding='latin1')
+
+# Print the initial size of the dataset
+print(f"Initial dataset size: {df.count()} rows")
+
+# Tạo cột mới để biểu thị thời gian trễ
+df = df.withColumn('Shipping Delay', col('Days for shipping (real)') - col('Days for shipment (scheduled)'))
+
+# Print the size of the dataset after adding the Shipping Delay column
+print(f"Dataset size after adding Shipping Delay column: {df.count()} rows")
+
+# Làm sạch dữ liệu
+# Drop rows with missing values only in relevant columns
+relevant_columns = ['Days for shipping (real)', 'Days for shipment (scheduled)', 'Order Item Quantity', 'Shipping Mode', 'Order Region', 'Shipping Delay', 'order date (DateOrders)']
+df_cleaned = df.dropna(subset=relevant_columns)
 
 output_dir = 'output'
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-
-
-# Thêm cột thời gian trễ với kiểm tra giá trị âm
-df = df.withColumn('Shipping Delay', 
-                  col('Days for shipping (real)') - col('Days for shipment (scheduled)'))
-
-
-
-# Thêm phân tích chi tiết về Delivery Delay
-df = df.withColumn('Delivery Delay', col('Days for shipping (real)') - col('Days for shipment (scheduled)'))
-
-# Tính toán thống kê về Delivery Delay
-delay_summary = df.select(avg("Delivery Delay")).collect()
-print(f"Average Delivery Delay: {delay_summary[0][0]:.2f} days")
-
-# Chuyển đổi sang Pandas để vẽ biểu đồ
-df_pd = df.select("Delivery Delay", "Shipping Mode", "Order Region").toPandas()
-
-
-
-# Xử lý missing values 
-imputer = Imputer(
-    inputCols=['Days for shipping (real)', 'Days for shipment (scheduled)'],
-    outputCols=['Days for shipping (real)_imp', 'Days for shipment (scheduled)_imp']
-)
-df = imputer.fit(df).transform(df)
-
-# Feature engineering: Add time-related information
-df = df.withColumn('Order Year', year('order date (DateOrders)')) \
-       .withColumn('Order Month', month('order date (DateOrders)'))
-
-# Replace NaN values with 0
-df = df.fillna(0)
-
-# Remove 'Order Month' and 'Order Year' columns
-df = df.drop('Order Month', 'Order Year')
-
+# Print the size of the dataset after cleaning
+print(f"Dataset size after cleaning: {df_cleaned.count()} rows")
 # Save cleaned data to CSV
 df.toPandas().to_csv(os.path.join(output_dir, 'cleaned_data.csv'), index=False)
 
+# Check the size of the input data
+if df_cleaned.count() < 10:  # Adjust the threshold as needed
+    raise ValueError("Input data is too small to be split into training and test sets.")
 
+# df_cleaned = df_cleaned.filter(col('Shipping Delay') >= 0)
 
+# Chia dữ liệu
+train_data, test_data = df_cleaned.randomSplit([0.8, 0.2], seed=42)
 
-# Chuẩn bị các biến đặc trưng
-indexers = [
-    StringIndexer(inputCol=col, outputCol=f"{col}_index", handleInvalid="keep")
-    for col in ['Shipping Mode', 'Order Region']
-]
+# Print the size of the training and test datasets
+print(f"Training dataset size: {train_data.count()} rows")
+print(f"Test dataset size: {test_data.count()} rows")
+
+# Check if the training dataset is empty
+if train_data.count() == 0:
+    raise ValueError("Training dataset is empty. Please check the data split or the input data.")
+
+# Phần 1: Thử nghiệm các mô hình khác nhau
+# Chuẩn bị dữ liệu
+indexers = []
+for col_name in ['Shipping Mode', 'Order Region']:
+    distinct_count = train_data.select(col_name).distinct().count()
+    if distinct_count > 1:
+        indexers.append(StringIndexer(inputCol=col_name, outputCol=col_name+"_index").fit(train_data))
 
 encoders = [
-    OneHotEncoder(inputCol=f"{col}_index", outputCol=f"{col}_encoded")
-    for col in ['Shipping Mode', 'Order Region']
+    OneHotEncoder(inputCol=col+"_index", outputCol=col+"_encoded") 
+    for col in ['Shipping Mode', 'Order Region'] if col+"_index" in train_data.columns
 ]
+
+# Check if the encoded columns exist before including them in the VectorAssembler
+encoded_columns = [col+"_encoded" for col in ['Shipping Mode', 'Order Region'] if col+"_encoded" in train_data.columns]
 
 assembler = VectorAssembler(
-    inputCols=[
-        'Shipping Mode_encoded', 
-        'Order Region_encoded', 
-        'Order Item Quantity',
-        'Days for shipment (scheduled)_imp'
-        # 'Order Year',
-        # 'Order Month'
-    ],
-    outputCol="features",
-    handleInvalid="keep"  # Handle invalid values by keeping them
+    inputCols=encoded_columns + ['Order Item Quantity', 'Days for shipment (scheduled)'],
+    outputCol="features"
 )
 
-# Pipeline xử lý dữ liệu hoàn chỉnh
-preprocessing_pipeline = Pipeline(stages=indexers + encoders + [assembler])
-# Print the schema of the DataFrame
-df.printSchema()
-
-# Phân tích tương quan
-# Check for null values in the features and label columns
-df.select([count(when(col(c).isNull() | isnan(col(c)), c)).alias(c) for c in df.columns]).show()
-
-relevant_columns = [
-    'Days for shipping (real)', 
-    'Days for shipment (scheduled)', 
-    'Order Item Quantity', 
-    'Shipping Mode', 
-    'Order Region', 
-    'Shipping Delay', 
-    'order date (DateOrders)'
-]
-df_cleaned = df.dropna(subset=relevant_columns)
-
-# Select numeric columns for correlation analysis
-numeric_cols = ['Days for shipment (scheduled)', 'Days for shipping (real)', 'Order Item Quantity', 'Shipping Delay']
-
-# Convert the selected numeric columns to a Pandas DataFrame
-numeric_pd = df_cleaned.select(numeric_cols).toPandas()
-
-# Plot the correlation matrix as a heatmap
-plt.figure(figsize=(20, 8))
-sns.heatmap(numeric_pd.corr(), annot=True, cmap='coolwarm', fmt=".2f")
-plt.title('Correlation Matrix of Variables')
-plt.savefig(os.path.join(output_dir, 'correlation_matrix.png')) 
-
-# Tinh chỉnh mô hình với Cross-Validation
-def build_model(name, estimator):
-    if isinstance(estimator, (RandomForestRegressor, GBTRegressor)):
-        param_grid = (ParamGridBuilder()
-            .addGrid(estimator.maxDepth, [3, 5])
-            .addGrid(estimator.subsamplingRate, [0.8, 1.0])
-            .build())
-    elif isinstance(estimator, LinearRegression):
-        param_grid = (ParamGridBuilder()
-            .addGrid(estimator.regParam, [0.1, 0.01])
-            .addGrid(estimator.elasticNetParam, [0.0, 0.5, 1.0])
-            .build())
-    else:
-        param_grid = ParamGridBuilder().build()
-    
-    return CrossValidator(
-        estimator=Pipeline(stages=[preprocessing_pipeline, estimator]),
-        estimatorParamMaps=param_grid,
-        evaluator=RegressionEvaluator(labelCol="Shipping Delay", metricName="rmse"),
-        numFolds=3,
-        parallelism=4
-    )
-
+# Định nghĩa các mô hình
 models = {
-    "Linear Regression": build_model("Linear Regression", LinearRegression(
-        featuresCol="features", 
-        labelCol="Shipping Delay",
-        elasticNetParam=0.5  # Kết hợp L1/L2 regularization
-    )),
-    "Random Forest": build_model("Random Forest", RandomForestRegressor(
-        featuresCol="features",
-        labelCol="Shipping Delay",
-        numTrees=200
-    )),
-    "Gradient Boosting": build_model("Gradient Boosting", GBTRegressor(
-        featuresCol="features",
-        labelCol="Shipping Delay",
-        maxIter=200,
-        stepSize=0.05
-    ))
+    "Linear Regression": LinearRegression(featuresCol="features", labelCol="Shipping Delay", maxIter=100, regParam=0.1),
+    "Random Forest": RandomForestRegressor(featuresCol="features", labelCol="Shipping Delay", numTrees=200),
+    "Gradient Boosting": GBTRegressor(featuresCol="features", labelCol="Shipping Delay", maxIter=200, maxDepth=5)
 }
 
-# Đánh giá và lựa chọn mô hình tốt nhất
-best_models = {}
-metrics_list = []
+# Đánh giá và so sánh các mô hình
+results = {}
 predictions_list = []
-for model_name, model in models.items():
-    print(f"Training {model_name} model...")
-    cv_model = model.fit(df)
-    best_model = cv_model.bestModel
-    best_models[model_name] = best_model
-    predictions = best_model.transform(df)
-    
-    # Tính toán các chỉ số
-    evaluator = RegressionEvaluator(labelCol="Shipping Delay")
-    metrics = {
-        'model': model_name,
-        'rmse': evaluator.evaluate(predictions, {evaluator.metricName: "rmse"}),
-        'r2': evaluator.evaluate(predictions, {evaluator.metricName: "r2"}),
-        'mae': evaluator.evaluate(predictions, {evaluator.metricName: "mae"})
-    }
-    metrics_list.append(metrics)
-    
-    print(f"""
-    {model_name} Performance:
-    - RMSE: {metrics['rmse']:.2f}
-    - R²: {metrics['r2']:.2f}
-    - MAE: {metrics['mae']:.2f}
-    Best Parameters:
-    """)
-    best_params = cv_model.bestModel.stages[-1].extractParamMap()
-    for param, value in best_params.items():
-        print(f"  {param.name}: {value}")
-    
-    # Add model name to predictions
-    predictions = predictions.withColumn("model", lit(model_name))
-    predictions_list.append(predictions)
+metrics_list = []
 
+for model_name, model in models.items():
+    try:
+        # Create a pipeline for each model
+        pipeline = Pipeline(stages=indexers + encoders + [assembler, model])
+        
+        # Train the model
+        trained_model = pipeline.fit(train_data)
+        
+        # Make predictions on the test data
+        predictions = trained_model.transform(test_data)
+        
+        # Add model name to predictions
+        predictions = predictions.withColumn("model", lit(model_name))
+        predictions_list.append(predictions)
+        
+        # Calculate evaluation metrics
+        evaluator_rmse = RegressionEvaluator(labelCol="Shipping Delay", metricName="rmse")
+        evaluator_r2 = RegressionEvaluator(labelCol="Shipping Delay", metricName="r2")
+        evaluator_mae = RegressionEvaluator(labelCol="Shipping Delay", metricName="mae")
+        
+        rmse = evaluator_rmse.evaluate(predictions)
+        r2 = evaluator_r2.evaluate(predictions)
+        mae = evaluator_mae.evaluate(predictions)
+        
+        # Store the metrics in a dictionary
+        metrics_list.append({
+            "Model": model_name,
+            "RMSE": rmse,
+            "R2": r2,
+            "MAE": mae
+        })
+        
+        # Print the metrics
+        print(f"""
+        {model_name} Performance:
+        RMSE: {rmse:.2f}
+        R²: {r2:.2f}
+        MAE: {mae:.2f}
+        """)
+    except Exception as e:
+        print(f"Error with model {model_name}: {e}")
 
 # Save metrics to CSV
 metrics_df = pd.DataFrame(metrics_list)
 metrics_df.to_csv(os.path.join(output_dir, 'model_metrics.csv'), index=False)
 
 # Combine all predictions into a single DataFrame
-combined_predictions = predictions_list[0]
-for pred in predictions_list[1:]:
-    combined_predictions = combined_predictions.union(pred)
+if predictions_list:
+    combined_predictions = predictions_list[0]
+    for pred in predictions_list[1:]:
+        combined_predictions = combined_predictions.union(pred)
 
-# Save combined predictions to CSV
-combined_predictions.toPandas().to_csv(os.path.join(output_dir, 'predictions.csv'), index=False)
+    # Save combined predictions to a CSV file
+    combined_predictions.select("model", "features", "Shipping Delay", "prediction").toPandas().to_csv(
+        os.path.join(output_dir, 'predictions.csv'), index=False
+    )
+else:
+    print("No predictions were generated.")
 
-# Trực quan hóa nâng cao
-def plot_feature_importance(model, feature_names, model_name):
-    if hasattr(model.stages[-1], 'featureImportances'):
-        importances = model.stages[-1].featureImportances
-        fi_df = pd.DataFrame({
-            'feature': feature_names,
-            'importance': [importances[i] for i in range(len(feature_names))]
-        })
-        plt.figure(figsize=(25, 6))
-        sns.barplot(x='importance', y='feature', data=fi_df.sort_values('importance', ascending=False))
-        plt.title(f'{model_name} - Feature Importance')
-        plt.savefig(os.path.join(output_dir, f'{model_name}_feature_importance.png'))
+# Chuyển kết quả sang DataFrame và vẽ biểu đồ
+metrics_df.set_index("Model", inplace=True)
+fig, ax = plt.subplots(1, 3, figsize=(18, 5))
+metrics_df['RMSE'].plot(kind='bar', ax=ax[0], title='RMSE Comparison', color='skyblue')
+metrics_df['R2'].plot(kind='bar', ax=ax[1], title='R² Comparison', color='lightgreen')
+metrics_df['MAE'].plot(kind='bar', ax=ax[2], title='MAE Comparison', color='salmon')
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, 'model_comparison.png')) 
 
-# Lấy tên các đặc trưng từ VectorAssembler
-feature_names = assembler.getInputCols()
-for name, model in best_models.items():
-    plot_feature_importance(model, feature_names, name)
 
-# Phân tích residuals
-for name, model in best_models.items():
-    predictions = model.transform(df).toPandas()
-    plt.figure(figsize=(20, 6))
-    sns.residplot(x=predictions['prediction'], y=predictions['Shipping Delay'], lowess=True)
-    plt.title(f'{name} - Residual Analysis')
-    plt.xlabel('Predicted Values')
-    plt.ylabel('Residuals')
-    plt.savefig(os.path.join(output_dir, f'{name}_residuals.png'))
 
-# # Phân tích tương quan
-# # Check for null or NaN values in the dataset
-# # Define relevant columns for analysis
-# relevant_columns = [
-#     'Days for shipping (real)', 
-#     'Days for shipment (scheduled)', 
-#     'Order Item Quantity', 
-#     'Shipping Mode', 
-#     'Order Region', 
-#     'Shipping Delay', 
-#     'order date (DateOrders)'
-# ]
-# df.select([count(when(col(c).isNull() | np.isnan(col(c)), c)).alias(c) for c in df.columns]).show()
 
-# # Ensure the label column is numeric
-# df = df.withColumn("Shipping Delay", col("Shipping Delay").cast(DoubleType()))
+# Phần 2: Phân tích sâu hơn
 
-# # Check the schema of the DataFrame
-# df.printSchema()
 
-# # Sample the dataset if it's too large
-# df_sampled = df.sample(fraction=0.1, seed=42)
+# Phân tích tương quan
+numeric_cols = ['Days for shipment (scheduled)', 'Days for shipping (real)', 'Order Item Quantity', 'Shipping Delay']
+numeric_pd = df_cleaned.select(numeric_cols).toPandas()
+plt.figure(figsize=(20, 8))
+sns.heatmap(numeric_pd.corr(), annot=True, cmap='coolwarm', fmt=".2f")
+plt.title('Ma trận tương quan giữa các biến số')
+plt.savefig(os.path.join(output_dir, 'correlation_matrix.png')) 
 
-# # Drop rows with missing values in the relevant columns
-# df_cleaned = df.dropna(subset=relevant_columns)
-
-# # Select numeric columns for correlation analysis
-# numeric_cols = ['Days for shipment (scheduled)', 'Days for shipping (real)', 'Order Item Quantity', 'Shipping Delay']
-
-# # Compute correlation matrix using Spark
-# for col1 in numeric_cols:
-#     for col2 in numeric_cols:
-#         if col1 != col2:
-#             correlation = df_cleaned.stat.corr(col1, col2)
-#             print(f"Correlation between {col1} and {col2}: {correlation}")
-
-# # Check if the columns exist in the DataFrame and are numeric
-# valid_numeric_cols = [
-#     col_name for col_name in numeric_cols 
-#     if col_name in [field.name for field in df_cleaned.schema.fields] 
-#     and df_cleaned.schema[col_name].dataType in (DoubleType(), IntegerType())
-# ]
-
-# if not valid_numeric_cols:
-#     raise ValueError("None of the specified columns are valid numeric columns in the DataFrame.")
-
-# # Convert the selected numeric columns to a Pandas DataFrame
-# numeric_pd = df_cleaned.select(valid_numeric_cols).toPandas()
-
-# # Plot the correlation matrix as a heatmap
-# plt.figure(figsize=(20, 8))
-# sns.heatmap(numeric_pd.corr(), annot=True, cmap='coolwarm', fmt=".2f")
-# plt.title('Ma trận tương quan giữa các biến số')
-# plt.savefig(os.path.join(output_dir, 'correlation_matrix.png'))  # Save the plot to the output folder
-# plt.close()
-
-# # Save the cleaned DataFrame to CSV
-# df_cleaned.toPandas().to_csv(os.path.join(output_dir, 'cleaned_data.csv'), index=False)
-
-# Save the entire DataFrame to CSV
-df.toPandas().to_csv(os.path.join(output_dir, 'data.csv'), index=False)
-
-# Dừng Spark
+# Dừng SparkSession
 spark.stop()
