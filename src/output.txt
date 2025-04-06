@@ -1,0 +1,145 @@
+Average Delivery Delay: 0.57 days
+root
+ |-- Type: string (nullable = true)
+ |-- Days for shipping (real): integer (nullable = true)
+ |-- Days for shipment (scheduled): integer (nullable = true)
+ |-- Benefit per order: double (nullable = false)
+ |-- Sales per customer: double (nullable = false)
+ |-- Delivery Status: string (nullable = true)
+ |-- Late_delivery_risk: integer (nullable = true)
+ |-- Category Id: integer (nullable = true)
+ |-- Category Name: string (nullable = true)
+ |-- Customer City: string (nullable = true)
+ |-- Customer Country: string (nullable = true)
+ |-- Customer Email: string (nullable = true)
+ |-- Customer Fname: string (nullable = true)
+ |-- Customer Id: integer (nullable = true)
+ |-- Customer Lname: string (nullable = true)
+ |-- Customer Password: string (nullable = true)
+ |-- Customer Segment: string (nullable = true)
+ |-- Customer State: string (nullable = true)
+ |-- Customer Street: string (nullable = true)
+ |-- Customer Zipcode: integer (nullable = true)
+ |-- Department Id: integer (nullable = true)
+ |-- Department Name: string (nullable = true)
+ |-- Latitude: double (nullable = false)
+ |-- Longitude: double (nullable = false)
+ |-- Market: string (nullable = true)
+ |-- Order City: string (nullable = true)
+ |-- Order Country: string (nullable = true)
+ |-- Order Customer Id: integer (nullable = true)
+ |-- order date (DateOrders): string (nullable = true)
+ |-- Order Id: integer (nullable = true)
+ |-- Order Item Cardprod Id: integer (nullable = true)
+ |-- Order Item Discount: double (nullable = false)
+ |-- Order Item Discount Rate: double (nullable = false)
+ |-- Order Item Id: integer (nullable = true)
+ |-- Order Item Product Price: double (nullable = false)
+ |-- Order Item Profit Ratio: double (nullable = false)
+ |-- Order Item Quantity: integer (nullable = true)
+ |-- Sales: double (nullable = false)
+ |-- Order Item Total: double (nullable = false)
+ |-- Order Profit Per Order: double (nullable = false)
+ |-- Order Region: string (nullable = true)
+ |-- Order State: string (nullable = true)
+ |-- Order Status: string (nullable = true)
+ |-- Order Zipcode: integer (nullable = true)
+ |-- Product Card Id: integer (nullable = true)
+ |-- Product Category Id: integer (nullable = true)
+ |-- Product Description: string (nullable = true)
+ |-- Product Image: string (nullable = true)
+ |-- Product Name: string (nullable = true)
+ |-- Product Price: double (nullable = false)
+ |-- Product Status: integer (nullable = true)
+ |-- shipping date (DateOrders): string (nullable = true)
+ |-- Shipping Mode: string (nullable = true)
+ |-- Shipping Delay: integer (nullable = true)
+ |-- Delivery Delay: integer (nullable = true)
+ |-- Days for shipping (real)_imp: integer (nullable = true)
+ |-- Days for shipment (scheduled)_imp: integer (nullable = true)
+
++----+------------------------+-----------------------------+-----------------+------------------+---------------+------------------+-----------+-------------+-------------+----------------+--------------+--------------+-----------+--------------+-----------------+----------------+--------------+---------------+----------------+-------------+---------------+--------+---------+------+----------+-------------+-----------------+-----------------------+--------+----------------------+-------------------+------------------------+-------------+------------------------+-----------------------+-------------------+-----+----------------+----------------------+------------+-----------+------------+-------------+---------------+-------------------+-------------------+-------------+------------+-------------+--------------+--------------------------+-------------+--------------+--------------+----------------------------+---------------------------------+
+|Type|Days for shipping (real)|Days for shipment (scheduled)|Benefit per order|Sales per customer|Delivery Status|Late_delivery_risk|Category Id|Category Name|Customer City|Customer Country|Customer Email|Customer Fname|Customer Id|Customer Lname|Customer Password|Customer Segment|Customer State|Customer Street|Customer Zipcode|Department Id|Department Name|Latitude|Longitude|Market|Order City|Order Country|Order Customer Id|order date (DateOrders)|Order Id|Order Item Cardprod Id|Order Item Discount|Order Item Discount Rate|Order Item Id|Order Item Product Price|Order Item Profit Ratio|Order Item Quantity|Sales|Order Item Total|Order Profit Per Order|Order Region|Order State|Order Status|Order Zipcode|Product Card Id|Product Category Id|Product Description|Product Image|Product Name|Product Price|Product Status|shipping date (DateOrders)|Shipping Mode|Shipping Delay|Delivery Delay|Days for shipping (real)_imp|Days for shipment (scheduled)_imp|
++----+------------------------+-----------------------------+-----------------+------------------+---------------+------------------+-----------+-------------+-------------+----------------+--------------+--------------+-----------+--------------+-----------------+----------------+--------------+---------------+----------------+-------------+---------------+--------+---------+------+----------+-------------+-----------------+-----------------------+--------+----------------------+-------------------+------------------------+-------------+------------------------+-----------------------+-------------------+-----+----------------+----------------------+------------+-----------+------------+-------------+---------------+-------------------+-------------------+-------------+------------+-------------+--------------+--------------------------+-------------+--------------+--------------+----------------------------+---------------------------------+
+|   0|                       0|                            0|                0|                 0|              0|                 0|          0|            0|            0|               0|             0|             0|          0|             8|                0|               0|             0|              0|               0|            0|              0|       0|        0|     0|         0|            0|                0|                      0|       0|                     0|                  0|                       0|            0|                       0|                      0|                  0|    0|               0|                     0|           0|          0|           0|            0|              0|                  0|             180519|            0|           0|            0|             0|                         0|            0|             0|             0|                           0|                                0|
++----+------------------------+-----------------------------+-----------------+------------------+---------------+------------------+-----------+-------------+-------------+----------------+--------------+--------------+-----------+--------------+-----------------+----------------+--------------+---------------+----------------+-------------+---------------+--------+---------+------+----------+-------------+-----------------+-----------------------+--------+----------------------+-------------------+------------------------+-------------+------------------------+-----------------------+-------------------+-----+----------------+----------------------+------------+-----------+------------+-------------+---------------+-------------------+-------------------+-------------+------------+-------------+--------------+--------------------------+-------------+--------------+--------------+----------------------------+---------------------------------+
+
+Training Linear Regression model...
+
+    Linear Regression Performance:
+    - RMSE: 1.27
+    - R²: 0.28
+    - MAE: 0.98
+    Best Parameters:
+    
+  aggregationDepth: 2
+  elasticNetParam: 0.5
+  epsilon: 1.35
+  featuresCol: features
+  fitIntercept: True
+  labelCol: Shipping Delay
+  loss: squaredError
+  maxBlockSizeInMB: 0.0
+  maxIter: 100
+  predictionCol: prediction
+  regParam: 0.01
+  solver: auto
+  standardization: True
+  tol: 1e-06
+Training Random Forest model...
+
+    Random Forest Performance:
+    - RMSE: 1.27
+    - R²: 0.28
+    - MAE: 0.98
+    Best Parameters:
+    
+  bootstrap: True
+  cacheNodeIds: False
+  checkpointInterval: 10
+  featureSubsetStrategy: auto
+  featuresCol: features
+  impurity: variance
+  labelCol: Shipping Delay
+  leafCol: 
+  maxBins: 32
+  maxDepth: 5
+  maxMemoryInMB: 256
+  minInfoGain: 0.0
+  minInstancesPerNode: 1
+  minWeightFractionPerNode: 0.0
+  numTrees: 200
+  predictionCol: prediction
+  seed: 6523924923301189516
+  subsamplingRate: 0.8
+Training Gradient Boosting model...
+
+    Gradient Boosting Performance:
+    - RMSE: 1.27
+    - R²: 0.28
+    - MAE: 0.98
+    Best Parameters:
+    
+  cacheNodeIds: False
+  checkpointInterval: 10
+  featureSubsetStrategy: all
+  featuresCol: features
+  impurity: variance
+  labelCol: Shipping Delay
+  leafCol: 
+  lossType: squared
+  maxBins: 32
+  maxDepth: 3
+  maxIter: 200
+  maxMemoryInMB: 256
+  minInfoGain: 0.0
+  minInstancesPerNode: 1
+  minWeightFractionPerNode: 0.0
+  predictionCol: prediction
+  seed: -7639721829940184416
+  stepSize: 0.05
+  subsamplingRate: 1.0
+  validationTol: 0.01
+SUCCESS: The process with PID 18132 (child process of PID 15412) has been terminated.
+SUCCESS: The process with PID 15412 (child process of PID 24292) has been terminated.
+SUCCESS: The process with PID 24292 (child process of PID 26960) has been terminated.
